@@ -1,0 +1,53 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 21
+    buildToolsVersion "21.1.2"
+
+    defaultConfig {
+        applicationId "com.github.yanglw.app"
+        minSdkVersion 14
+        targetSdkVersion 21
+        versionCode 1
+        versionName '1.0'
+
+        manifestPlaceholders << [key1: "key1-default",
+                                 key2: "key2-default",
+                                 key3: "key3-default"]
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            shrinkResources true
+
+            manifestPlaceholders << [key1: "key1-release"]
+        }
+
+        debug {
+            manifestPlaceholders << [key2: "key2-debug"]
+        }
+    }
+    flavorDimensions 'price', 'store'
+    productFlavors {
+        amazon {
+            dimension 'store'
+        }
+        google {
+            dimension 'store'
+        }
+
+        pay {
+            dimension 'price'
+        }
+        free {
+            dimension 'price'
+        }
+    }
+}
+
+dependencies {
+}
+
+apply from: 'tool.gradle'

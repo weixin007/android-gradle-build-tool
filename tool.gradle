@@ -1,0 +1,310 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:1.3.0'
+    }
+}
+
+import com.android.build.gradle.AppExtension
+import com.android.build.gradle.LibraryExtension
+
+import groovy.transform.Field
+
+/** 编译时传入的参数，表示版本信息文件的路径。 */
+@Field private final String PROPERTY_VERSION_FILE = 'verFile'
+/** 编译时传入的参数，表示输出目录。 */
+@Field private final String PROPERTY_OUTPUT_PATH = 'outputs'
+/** 编译时传入的参数，表示是否要修改生成物的名称。 */
+@Field private final String PROPERTY_CHANGE_OUTPUT_FILE_NAME = 'changeOutputName'
+/** 编译时传入的参数，表示项目名称，建议写在子项目的 gradle.properties 文件中。 */
+@Field private final String PROPERTY_PROJECT_NAME = 'proName'
+
+/** 分隔符。 */
+@Field private final String SEPARATOR = '-'
+
+/** 标记是否开启修改版本号的功能。 */
+boolean isChangeVersion = false
+/** 版本信息文件路径。*/
+String verFile
+/** 版本信息。 */
+Version versionInfo
+
+/** 标记是否开启收集生成物的功能。 */
+boolean isCollect = false
+/** 项目生成文件存放的的目录。*/
+String outputs
+
+/** 标记是否开启更改生成物名称的功能。 */
+boolean isChangeFileName = false
+
+if (project.properties[PROPERTY_VERSION_FILE]) {
+    verFile = project.properties[PROPERTY_VERSION_FILE]
+} else {
+    if (System.properties[PROPERTY_VERSION_FILE]) {
+        verFile = System.properties[PROPERTY_VERSION_FILE]
+    }
+}
+if (verFile) {
+    isChangeVersion = true
+}
+
+if (project.properties[PROPERTY_OUTPUT_PATH]) {
+    outputs = project.properties[PROPERTY_OUTPUT_PATH]
+} else {
+    if (System.properties[PROPERTY_OUTPUT_PATH]) {
+        outputs = System.properties[PROPERTY_OUTPUT_PATH]
+    }
+}
+if (outputs) {
+    isCollect = true
+}
+
+if (project.hasProperty(PROPERTY_CHANGE_OUTPUT_FILE_NAME) || System.hasProperty(PROPERTY_CHANGE_OUTPUT_FILE_NAME)) {
+    isChangeFileName = true
+}
+
+preBuild {
+    doFirst {
+        if (isChangeVersion) {
+            changeVersion(versionInfo = getVersionFromFile(verFile), android)
+        }
+
+        if (isChangeFileName) {
+            changeOutputFileName(android)
+        }
+    }
+}
+
+assemble {
+    doLast {
+        if (isCollect) {
+            collectOutputFiles(outputs, android)
+        }
+
+        if (isChangeVersion) {
+            saveVersionToFile(versionInfo, verFile)
+        }
+    }
+}
+
+/** 从版本文件中获取版本信息。 */
+Version getVersionFromFile(String verFilePath) {
+    Version version = new Version()
+    // 获取版本号。
+    def pFile = new File(verFilePath)
+    if (pFile.exists()) {
+        def versionProps = new Properties()
+        def read = pFile.newReader();
+        versionProps.load(read)
+        read.close()
+        version.hVerName = versionProps['hVerName'] ?: Version.DEFAULT_H_VER_NAME
+        version.lVerName = versionProps['lVerName'] ?: Version.DEFAULT_L_VER_NAME
+        version.verCode = versionProps['verCode']?Version.DEFAULT_VERSION_CODE：versionProps['verCode'].toInteger()
+    } else {
+        version.hVerName = Version.DEFAULT_H_VER_NAME
+        version.lVerName = Version.DEFAULT_L_VER_NAME
+        version.verCode = Version.DEFAULT_VERSION_CODE
+    }
+    return version
+}
+
+/** 修改生成物的版本信息。 */
+def changeVersion(Version version, android) {
+    Closure closure = {variant ->
+        // 修改 apk 版本号。
+        variant.mergedFlavor.versionCode = version.verCode
+        // 修改 apk 版本名称。
+        variant.mergedFlavor.versionName = variant.buildType.isDebuggable() ? "$version.hVerName.$version.lVerName" : "$version.hVerName"
+    }
+
+    if (android instanceof AppExtension) {
+        android.applicationVariants.all(closure)
+    } else {
+        if (android instanceof LibraryExtension) {
+            android.libraryVariants.all(closure)
+        }
+    }
+}
+
+/** 将版本信息存储到版本文件。 */
+def saveVersionToFile(Version version, String verFilePath) {
+    // 升级版本号。
+    def versionProps = new Properties()
+    versionProps['hVerName'] = version.hVerName
+    versionProps['lVerName'] = String.valueOf(version.lVerName.toInteger() + 1)
+    versionProps['verCode'] = String.valueOf(version.verCode + 1)
+    // 保存版本号。
+    def pFile = new File(verFilePath)
+    def writer = pFile.newWriter();
+    versionProps.store(writer, null)
+    writer.close()
+}
+
+/** 修改生成物的名称。 */
+def changeOutputFileName(android) {
+    Closure closure = {variant ->
+        StringBuilder sb = new StringBuilder()
+        // 项目名称。
+        sb.append(getProjectName())
+        // productFlavors 。
+        variant.getProductFlavors().each {
+            sb.append(SEPARATOR)
+            sb.append(it.name)
+        }
+        // buildType 。
+        sb.append(SEPARATOR)
+        sb.append(variant.buildType.name)
+        // 版本名称。
+        sb.append(SEPARATOR)
+        sb.append(variant.mergedFlavor.versionName)
+        // 版本号。
+        sb.append(SEPARATOR)
+        sb.append(variant.mergedFlavor.versionCode)
+        // 标记 apk 是否进行了签名。
+        if (android instanceof AppExtension) {
+            if (!variant.isSigningReady()) {
+                sb.append(SEPARATOR)
+                sb.append('unsigned')
+            }
+        }
+
+        def output = variant.outputs[0];
+
+        // 后缀名。
+        sb.append('.')
+        sb.append(getExtensionName(output.outputFile.name))
+
+        // 更改生成物的名称。
+        output.outputFile = new File((String) output.outputFile.parent, sb.toString())
+    }
+    if (android instanceof AppExtension) {
+        android.applicationVariants.all(closure)
+    } else {
+        if (android instanceof LibraryExtension) {
+            android.libraryVariants.all(closure)
+        }
+    }
+}
+
+/** 收集有用的生成物。 */
+def collectOutputFiles(String outputs, android) {
+    // 获取当前项目对应的目录。
+    File projectOutFolder = new File(outputs, getProjectName())
+
+    Closure closure = {variant ->
+
+        // 获取当前版本号对应的目录。
+        String time = new Date(System.currentTimeMillis()).format('yyyyMMdd')
+        StringBuilder sb = new StringBuilder()
+        sb.append(time)
+        sb.append(SEPARATOR)
+        sb.append(variant.mergedFlavor.versionName)
+        sb.append(SEPARATOR)
+        sb.append(variant.mergedFlavor.versionCode)
+        sb.append(File.separatorChar)
+        File verOutFolder = new File(projectOutFolder, sb.toString())
+        if (!verOutFolder.exists()) {
+            verOutFolder.mkdirs()
+        }
+
+        // 获取当前 variants 对应的目录。
+        StringBuilder stringBuilder = new StringBuilder()
+        // productFlavors 。
+        variant.getProductFlavors().each {
+            stringBuilder.append(it.name)
+            stringBuilder.append(SEPARATOR)
+        }
+        // buildType 。
+        stringBuilder.append(variant.buildType.name)
+        File variantOutFolder = new File(verOutFolder, stringBuilder.toString())
+        if (!variantOutFolder.exists()) {
+            variantOutFolder.mkdirs()
+        }
+
+        // 复制目标文件。
+        copy {
+            from(variant.outputs[0].outputFile)
+            into(new File(variantOutFolder, getExtensionName(variant.outputs[0].outputFile.name, 'output')))
+        }
+
+        // 复制 AndroidManifest.xml 文件。
+        copy {
+            from(variant.outputs[0].getProcessManifest().manifestOutputFile)
+            into(new File(variantOutFolder, 'manifest'))
+        }
+
+        // 有 proguard 信息文件，说明进行了 proguard 操作，需要收集 mapping 、jar 、dex 文件。
+        if (variant.mappingFile) {
+            // 复制 proguard 信息文件。
+            copy {
+                from(variant.variantData.scope.getProguardOutputFolder())
+                into(new File(variantOutFolder, 'mapping'))
+            }
+
+            // 复制 proguard 输出文件。
+            copy {
+                from(variant.variantData.scope.getProguardOutputFile())
+                into(new File(variantOutFolder, 'jar'))
+            }
+
+            // 复制 dex 文件。
+            if (android instanceof AppExtension) {
+                copy {
+                    from(variant.dex.outputFolder)
+                    into(new File(variantOutFolder, 'dex'))
+                }
+            }
+        }
+    }
+    if (android instanceof AppExtension) {
+        android.applicationVariants.all(closure)
+    } else {
+        if (android instanceof LibraryExtension) {
+            android.libraryVariants.all(closure)
+        }
+    }
+}
+
+/** 获取项目名称。 */
+String getProjectName() {
+    if (project.properties[PROPERTY_PROJECT_NAME]) {
+        return project.properties[PROPERTY_PROJECT_NAME]
+    }
+
+    return project.name
+}
+
+/** 获取文件扩展名。 */
+String getExtensionName(String fileName) {
+    return getExtensionName(fileName, fileName);
+}
+
+/** 获取文件扩展名。 */
+String getExtensionName(String fileName, String defaultName) {
+    if (fileName) {
+        int dot = fileName.lastIndexOf('.');
+        if (dot > -1 && dot < fileName.length() - 1) {
+            return fileName.substring(dot + 1);
+        }
+    }
+    return defaultName;
+}
+
+class Version {
+    /** 默认的版本名称高位。 */
+    public static final String DEFAULT_H_VER_NAME = '1.0.0'
+    /** 默认的版本名称低位。 */
+    public static final String DEFAULT_L_VER_NAME = '1'
+    /** 默认版本号。 */
+    public static final int DEFAULT_VERSION_CODE = 1
+
+    /** 版本名称高位。 */
+    String hVerName
+    /** 版本名称高位。 */
+    String lVerName
+    /** 版本号。 */
+    int verCode = DEFAULT_VERSION_CODE
+}
