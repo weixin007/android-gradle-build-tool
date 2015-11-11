@@ -42,10 +42,13 @@ release 产物的版本名称为 `1.2.3` ，版本号为 `226` ； debug 产物�
 
 配置方式：
 - 方法1：`gradle.properties` 文件中添加以下内容：
+
   ```
   verFile=path/to/your/version/file
   ```
+
 - 方法2：Gradle 执行时添加参数：
+
   ```
   -PverFile=path/to/your/version/file
   ```
@@ -59,11 +62,14 @@ release 产物的版本名称为 `1.2.3` ，版本号为 `226` ； debug 产物�
 
 配置方式：
 - 方法1：`gradle.properties` 文件中添加以下内容：
+
   ```
   changeOutputName
   proName=your_project_name
   ```
+
 - 方法2：Gradle 执行时添加参数：
+
   ```
   -PchangeOutputName -PproName=your_project_name
   ```
@@ -84,11 +90,14 @@ release 产物的版本名称为 `1.2.3` ，版本号为 `226` ； debug 产物�
 
 配置方式：
 - 方法1：`gradle.properties` 文件中添加以下内容：
+
   ```
   outputs=path/to/your/outputs/folder
   proName=your_project_name
   ```
+
 - 方法2：Gradle 执行时添加参数：
+
   ```
   -Poutputs=path/to/your/outputs/folder -PproName=your_project_name
   ```
